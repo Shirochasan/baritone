@@ -69,6 +69,7 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
     private ElytraBehavior behavior;
     private boolean predictingTerrain;
 
+
     @Override
     public void onLostControl() {
         this.state = State.START_FLYING; // TODO: null state?
@@ -110,6 +111,7 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
     @Override
     public PathingCommand onTick(boolean calcFailed, boolean isSafeToCancel) {
         final long seedSetting = Baritone.settings().elytraNetherSeed.value;
+
         if (seedSetting != this.behavior.context.getSeed()) {
             logDirect("Nether seed changed, recalculating path");
             this.resetState();
@@ -126,6 +128,23 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
             onLostControl();
             logDirect(AUTO_JUMP_FAILURE_MSG);
             return new PathingCommand(null, PathingCommandType.CANCEL_AND_SET_GOAL);
+        }
+
+        if (ctx.player().isFallFlying()
+            && this.state == State.FLYING
+            && ctx.world().dimension() != Level.NETHER) {
+
+            double targetY = 220;
+            double currentY = ctx.player().getY();
+
+            if (currentY < targetY) {
+                float pitch = (float) Math.max(-40, -10 - (targetY - currentY) * 0.1);
+
+                baritone.getLookBehavior().updateTarget(
+                    new Rotation(ctx.playerRotations().getYaw(), pitch),
+            false
+                );
+            }
         }
 
         boolean safetyLanding = false;
@@ -318,13 +337,34 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         return this.behavior != null ? this.behavior.destination : null;
     }
 
+    //@Override
+    //public void pathTo(BlockPos destination) {
+    //    if (destination == null) {
+    //        return;
+    //    }
+    //
+    //this.goal = null;
+    //    this.pathTo0(destination, false);
+    //}
     @Override
-    public void pathTo(BlockPos destination) {
+    public synchronized void pathTo(BlockPos destination) {
+        if (destination == null) return;
+
+        logDirect("Re-routing Elytra to "
+            + destination.getX() + " "
+            + destination.getY() + " "
+            + destination.getZ());
+
+        // 完全にプロセスをリセット
+        this.onLostControl();
+
+        // 新しい目的地で再スタート
         this.pathTo0(destination, false);
     }
 
+
     private void pathTo0(BlockPos destination, boolean appendDestination) {
-        if (ctx.player() == null || ctx.player().level().dimension() != Level.NETHER) {
+        if (ctx.player() == null) {
             return;
         }
         this.onLostControl();
@@ -341,10 +381,11 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         final int x;
         final int y;
         final int z;
+
         if (iGoal instanceof GoalXZ) {
             GoalXZ goal = (GoalXZ) iGoal;
             x = goal.getX();
-            y = 64;
+            y = Math.max(ctx.playerFeet().getY(), 128);
             z = goal.getZ();
         } else if (iGoal instanceof GoalBlock) {
             GoalBlock goal = (GoalBlock) iGoal;
@@ -354,9 +395,17 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         } else {
             throw new IllegalArgumentException("The goal must be a GoalXZ or GoalBlock");
         }
-        if (y <= 0 || y >= 128) {
-            throw new IllegalArgumentException("The y of the goal is not between 0 and 128");
+
+        if (ctx.world().dimension() == Level.NETHER) {
+            if (y <= 0 || y >= 128) {
+                throw new IllegalArgumentException("The y of the goal is not between 0 and 128");
+            }
+        } else {
+            if (y <= -64 || y >= 320) {
+                throw new IllegalArgumentException("The y of the goal is not between -64 and 320");
+            }
         }
+
         this.pathTo(new BlockPos(x, y, z));
     }
 
@@ -378,6 +427,39 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
             return true;
         }
         return false;
+    }
+
+    @Override
+    public void cancelAndLand() {
+        if (!ctx.player().isFallFlying()) {
+            logDirect("Not flying");
+            return;
+        }
+    
+
+        logDirect("Cancelling Elytra and initiating safe landing...");
+
+        // 経路無効化
+        if (this.behavior != null) {
+            this.behavior.pathManager.clear();
+        }
+
+        // 近場に着地地点探す
+        BetterBlockPos landing = findSafeLandingSpot(ctx.playerFeet());
+
+        if (landing != null) {
+            this.landingSpot = landing;
+            this.goingToLandingSpot = true;
+            if (landing != null) {
+                this.pathTo0(landing, true); // ←これ重要
+            }
+            this.state = State.LANDING;
+
+            logDirect("Landing at " + landing);
+        } else {
+            logDirect("No safe landing spot found, gliding down...");
+            this.state = State.LANDING;
+        }
     }
 
     @Override
@@ -467,12 +549,24 @@ public class ElytraProcess extends BaritoneProcessHelper implements IBaritonePro
         }
     }
 
-    private static boolean isInBounds(BlockPos pos) {
-        return pos.getY() >= 0 && pos.getY() < 128;
+    private boolean isInBounds(BlockPos pos) {
+        if (ctx.world().dimension() == Level.NETHER) {
+            return pos.getY() >= 0 && pos.getY() < 128;
+        }
+        return pos.getY() >= -64 && pos.getY() < 320;
     }
 
     private boolean isSafeBlock(Block block) {
-        return block == Blocks.NETHERRACK || block == Blocks.GRAVEL || (block == Blocks.NETHER_BRICKS && Baritone.settings().elytraAllowLandOnNetherFortress.value);
+        if (ctx.world().dimension() == Level.NETHER) {
+            return block == Blocks.NETHERRACK || block == Blocks.GRAVEL || (block == Blocks.NETHER_BRICKS && Baritone.settings().elytraAllowLandOnNetherFortress.value);
+        }
+        return block.defaultBlockState().isSolid()
+                && block != Blocks.LAVA
+                && block != Blocks.FIRE
+                && block != Blocks.SOUL_FIRE
+                && block != Blocks.MAGMA_BLOCK
+                && block != Blocks.CACTUS
+                && block != Blocks.SWEET_BERRY_BUSH;
     }
 
     private boolean isSafeBlock(BlockPos pos) {

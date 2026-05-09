@@ -48,6 +48,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.Fireworks;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.AirBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -133,7 +134,19 @@ public final class ElytraBehavior implements Helper {
         this.solverExecutor = Executors.newSingleThreadExecutor();
         this.nextTickBoostCounter = new int[2];
 
-        this.context = new NetherPathfinderContext(Baritone.settings().elytraNetherSeed.value);
+        final int pfDimension;
+        final int pfMaxHeight;
+        if (this.ctx.world().dimension() == Level.NETHER) {
+            pfDimension = dev.babbaj.pathfinder.NetherPathfinder.DIMENSION_NETHER;
+            pfMaxHeight = 128;
+        } else if (this.ctx.world().dimension() == Level.END) {
+            pfDimension = dev.babbaj.pathfinder.NetherPathfinder.DIMENSION_END;
+            pfMaxHeight = 256;
+        } else {
+            pfDimension = dev.babbaj.pathfinder.NetherPathfinder.DIMENSION_OVERWORLD;
+            pfMaxHeight = 256;
+        }
+        this.context = new NetherPathfinderContext(Baritone.settings().elytraNetherSeed.value, pfDimension, pfMaxHeight);
         this.boi = new BlockStateOctreeInterface(context);
     }
 
@@ -226,14 +239,12 @@ public final class ElytraBehavior implements Helper {
             }
 
             this.recalculating = true;
-            final List<BetterBlockPos> before = this.path.subList(0, afterIncl + 1);
             final long start = System.nanoTime();
-            final BetterBlockPos pathStart = this.path.get(afterIncl);
+            final BlockPos from = ctx.playerFeet();
 
-            this.path0(pathStart, ElytraBehavior.this.destination, segment -> segment.prepend(before.stream()))
+            this.path0(from, ElytraBehavior.this.destination, UnaryOperator.identity())
                     .thenRun(() -> {
-                        final int recompute = this.path.size() - before.size() - 1;
-                        final double distance = this.path.get(0).distanceTo(this.path.get(recompute));
+                        final double distance = this.path.get(0).distanceTo(this.path.get(this.path.size() - 1));
 
                         if (this.completePath) {
                             logVerbose(String.format("Computed path (%.1f blocks in %.4f seconds)", distance, (System.nanoTime() - start) / 1e9d));
@@ -247,10 +258,6 @@ public final class ElytraBehavior implements Helper {
                             final Throwable cause = ex.getCause();
                             if (cause instanceof PathCalculationException) {
                                 logDirect("Failed to compute next segment");
-                                if (ctx.player().distanceToSqr(pathStart.getCenter()) < 16 * 16) {
-                                    logVerbose("Player is near the segment start, therefore repeating this calculation is pointless. Marking as complete");
-                                    completePath = true;
-                                }
                             } else {
                                 logUnhandledException(cause);
                             }

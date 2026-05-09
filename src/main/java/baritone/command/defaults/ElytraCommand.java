@@ -34,6 +34,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.world.level.Level;
+import net.minecraft.core.BlockPos;
 
 import java.util.Arrays;
 import java.util.List;
@@ -58,6 +59,50 @@ public class ElytraCommand extends Command {
         if (!elytra.isLoaded()) {
             throw new CommandInvalidStateException(unsupportedSystemMessage());
         }
+        /*
+         * #elytra x z
+         * #elytra x y z
+         */
+        if (args.hasAny()) {
+            try {
+                if (args.hasExactly(2)) {
+                    int x = args.getAs(Integer.class);
+                    int z = args.getAs(Integer.class);
+
+                    //int y = ctx.world().dimension() == Level.NETHER ? 64 : 128;
+                    //int y = ctx.world().dimension() == Level.NETHER ? 121 : 200;
+                    int y;
+
+                    if (ctx.world().dimension() == Level.NETHER) {
+                        y = 121; // 天井付近
+                    } else {
+                        // Overworld / End
+                        int currentY = ctx.player().getBlockY();
+
+                        // すでに高いならそのまま
+                        if (currentY > 180) {
+                            y = currentY;
+                        } else {
+                            y = 220; // 強制上昇ターゲット
+                        }
+                    }
+                    elytra.pathTo(new BlockPos(x, y, z));
+                    logDirect("Flying to " + x + " " + y + " " + z);
+                    return;
+                }
+
+                if (args.hasExactly(3)) {
+                    int x = args.getAs(Integer.class);
+                    int y = args.getAs(Integer.class);
+                    int z = args.getAs(Integer.class);
+
+                    elytra.pathTo(new BlockPos(x, y, z));
+                    logDirect("Flying to " + x + " " + y + " " + z);
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+        }
 
         if (!args.hasAny()) {
             if (Baritone.settings().elytraTermsAccepted.value) {
@@ -70,9 +115,6 @@ public class ElytraCommand extends Command {
             Goal iGoal = customGoalProcess.mostRecentGoal();
             if (iGoal == null) {
                 throw new CommandInvalidStateException("No goal has been set");
-            }
-            if (ctx.world().dimension() != Level.NETHER) {
-                throw new CommandInvalidStateException("Only works in the nether");
             }
             try {
                 elytra.pathTo(iGoal);
@@ -93,6 +135,10 @@ public class ElytraCommand extends Command {
                 elytra.repackChunks();
                 logDirect("Queued all loaded chunks for repacking");
                 break;
+            }
+            case "cancel": {
+                elytra.cancelAndLand();
+                logDirect("Cancelling Elytra and landing safely...");
             }
             default: {
                 throw new CommandInvalidStateException("Invalid action");
@@ -189,7 +235,7 @@ public class ElytraCommand extends Command {
     public Stream<String> tabComplete(String label, IArgConsumer args) throws CommandException {
         TabCompleteHelper helper = new TabCompleteHelper();
         if (args.hasExactlyOne()) {
-            helper.append("reset", "repack", "supported");
+            helper.append("reset", "repack", "supported", "cancel");
         }
         return helper.filterPrefix(args.getString()).stream();
     }
@@ -202,13 +248,19 @@ public class ElytraCommand extends Command {
     @Override
     public List<String> getLongDesc() {
         return Arrays.asList(
-                "The elytra command tells baritone to, in the nether, automatically fly to the current goal.",
+                "The elytra command tells baritone to automatically fly to the current goal.",
                 "",
                 "Usage:",
-                "> elytra - fly to the current goal",
-                "> elytra reset - Resets the state of the process, but will try to keep flying to the same goal.",
-                "> elytra repack - Queues all of the chunks in render distance to be given to the native library.",
-                "> elytra supported - Tells you if baritone ships a native library that is compatible with your PC."
+//                "> elytra - fly to the current goal",
+//                "> elytra reset - Resets the state of the process, but will try to keep flying to the same goal.",
+//                "> elytra repack - Queues all of the chunks in render distance to be given to the native library.",
+//                "> elytra supported - Tells you if baritone ships a native library that is compatible with your PC."
+                 "> elytra - fly to current goal",
+                 "> elytra x z - fly directly to x z",
+                 "> elytra x y z - fly directly to x y z",
+                 "> elytra reset - reset state",
+                 "> elytra repack - repack chunks",
+                 "> elytra supported - native support info"
         );
     }
 

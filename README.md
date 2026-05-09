@@ -51,6 +51,12 @@
   <a href="http://forthebadge.com/"><img src="https://web.archive.org/web/20230604002050/https://forthebadge.com/images/badges/mom-made-pizza-rolls.svg" alt="forthebadge"/></a>
 </p>
 
+This is a clone of baritone.  
+
+**Read-only / No Support**  
+
+*The differences from the original have been kept with git diff. However, I am currently interested in AI and the metaverse, so I will not make any further updates or respond to questions.*
+
 A Minecraft pathfinder bot.
 
 Baritone is the pathfinding system used in [Impact](https://impactclient.net/) since 4.4. [Here's](https://www.youtube.com/watch?v=StquF69-_wI) a (very old!) video I made showing off what it can do.

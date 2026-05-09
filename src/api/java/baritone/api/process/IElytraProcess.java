@@ -47,4 +47,9 @@ public interface IElytraProcess extends IBaritoneProcess {
      * FOR INTERNAL USE ONLY. MAY BE REMOVED AT ANY TIME.
      */
     boolean isSafeToCancel();
+
+    /*
+     * Cancels the current flight and lands safely.
+     */
+    void cancelAndLand();
 }

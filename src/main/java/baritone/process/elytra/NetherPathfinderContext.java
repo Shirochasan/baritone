@@ -52,11 +52,15 @@ public final class NetherPathfinderContext {
     // Visible for access in BlockStateOctreeInterface
     final long context;
     private final long seed;
+    final int maxHeight;
+    private final int dimension;
     private final ExecutorService executor;
 
-    public NetherPathfinderContext(long seed) {
-        this.context = NetherPathfinder.newContext(seed);
+    public NetherPathfinderContext(long seed, int dimension, int maxHeight) {
+        this.context = NetherPathfinder.newContext(seed, null, dimension, maxHeight, false);
         this.seed = seed;
+        this.maxHeight = maxHeight;
+        this.dimension = dimension;
         this.executor = Executors.newSingleThreadExecutor();
     }
 
@@ -80,7 +84,7 @@ public final class NetherPathfinderContext {
             //       and prune the oldest chunks per chunkPackerQueueMaxSize
             final LevelChunk chunk = ref.get();
             if (chunk != null) {
-                long ptr = NetherPathfinder.getOrCreateChunk(this.context, chunk.getPos().x, chunk.getPos().z);
+                long ptr = NetherPathfinder.allocateAndInsertChunk(this.context, chunk.getPos().x, chunk.getPos().z);
                 writeChunkData(chunk, ptr);
             }
         });
@@ -89,11 +93,11 @@ public final class NetherPathfinderContext {
     public void queueBlockUpdate(BlockChangeEvent event) {
         this.executor.execute(() -> {
             ChunkPos chunkPos = event.getChunkPos();
-            long ptr = NetherPathfinder.getChunkPointer(this.context, chunkPos.x, chunkPos.z);
+            long ptr = NetherPathfinder.getChunk(this.context, chunkPos.x, chunkPos.z);
             if (ptr == 0) return; // this shouldn't ever happen
             event.getBlocks().forEach(pair -> {
                 BlockPos pos = pair.first();
-                if (pos.getY() >= 128) return;
+                if (pos.getY() >= this.maxHeight) return;
                 boolean isSolid = pair.second() != AIR_BLOCK_STATE;
                 Octree.setBlock(ptr, pos.getX() & 15, pos.getY(), pos.getZ() & 15, isSolid);
             });
@@ -109,7 +113,8 @@ public final class NetherPathfinderContext {
                     true,
                     false,
                     10000,
-                    !Baritone.settings().elytraPredictTerrain.value
+                    !Baritone.settings().elytraPredictTerrain.value || this.dimension != NetherPathfinder.DIMENSION_NETHER,
+                    1.0
             );
             if (segment == null) {
                 throw new PathCalculationException("Path calculation failed");
@@ -186,17 +191,23 @@ public final class NetherPathfinderContext {
         return this.seed;
     }
 
-    private static void writeChunkData(LevelChunk chunk, long ptr) {
+    private void writeChunkData(LevelChunk chunk, long ptr) {
         try {
-            LevelChunkSection[] chunkInternalStorageArray = chunk.getSections();
-            for (int y0 = 0; y0 < 8; y0++) {
-                final LevelChunkSection extendedblockstorage = chunkInternalStorageArray[y0];
-                if (extendedblockstorage == null) {
-                    continue;
-                }
-                final PalettedContainer<BlockState> bsc = extendedblockstorage.getStates();
+            LevelChunkSection[] sections = chunk.getSections();
+            // 1.18+ overworld/end: 24 sections starting at Y=-64
+            // Nether: 8 sections starting at Y=0
+            final int minSectionY = (sections.length >= 24) ? -64 : 0;
+
+            for (int y0 = 0; y0 < sections.length; y0++) {
+                final int sectionStartY = minSectionY + (y0 << 4);
+                // Skip sections outside the pathfinder's [0, maxHeight) range
+                if (sectionStartY + 15 < 0 || sectionStartY >= this.maxHeight) continue;
+
+                final LevelChunkSection section = sections[y0];
+                if (section == null) continue;
+
+                final PalettedContainer<BlockState> bsc = section.getStates();
                 final int airId = ((IPalettedContainer<BlockState>) bsc).getPalette().idFor(AIR_BLOCK_STATE);
-                // pasted from FasterWorldScanner
                 final BitStorage array = ((IPalettedContainer<BlockState>) bsc).getStorage();
                 if (array == null) continue;
                 final long[] longArray = array.getRaw();
@@ -204,19 +215,20 @@ public final class NetherPathfinderContext {
                 int bitsPerEntry = array.getBits();
                 long maxEntryValue = (1L << bitsPerEntry) - 1L;
 
-                final int yReal = y0 << 4;
                 for (int i = 0, idx = 0; i < longArray.length && idx < arraySize; ++i) {
                     long l = longArray[i];
                     for (int offset = 0; offset <= (64 - bitsPerEntry) && idx < arraySize; offset += bitsPerEntry, ++idx) {
                         int value = (int) ((l >> offset) & maxEntryValue);
                         int x = (idx & 15);
-                        int y = yReal + (idx >> 8);
+                        int actualY = sectionStartY + (idx >> 8);
                         int z = ((idx >> 4) & 15);
-                        Octree.setBlock(ptr, x, y, z, value != airId);
+                        if (actualY >= 0 && actualY < this.maxHeight) {
+                            Octree.setBlock(ptr, x, actualY, z, value != airId);
+                        }
                     }
                 }
             }
-            Octree.setIsFromJava(ptr);
+            NetherPathfinder.setChunkState(this.context, chunk.getPos().x, chunk.getPos().z, true);
         } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);

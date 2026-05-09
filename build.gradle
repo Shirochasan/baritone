@@ -71,10 +71,7 @@ allprojects {
             }
         }
         mavenCentral()
-        maven {
-            name = 'babbaj-repo'
-            url = 'https://babbaj.github.io/maven/'
-        }
+        mavenLocal()
     }
 
     dependencies {
