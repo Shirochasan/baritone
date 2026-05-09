@@ -55,7 +55,18 @@ This is a clone of baritone.
 
 **Read-only / No Support**  
 
-*The differences from the original have been kept with git diff. However, I am currently interested in AI and the metaverse, so I will not make any further updates or respond to questions.*
+*The differences from the original have been kept with git log. However, I am currently interested in AI and the metaverse, so I will not make any further updates or respond to questions.* The changed files from b5af910d164543fb7522f3cf61a5a57a6f373c2b are as follows:
+
+- README.md
+- build.gradle
+- gradle.properties
+- src/api/java/baritone/api/process/IElytraProcess.java
+- src/main/java/baritone/command/defaults/ElytraCommand.java
+- src/main/java/baritone/process/ElytraProcess.java
+- src/main/java/baritone/process/elytra/BlockStateOctreeInterface.java
+- src/main/java/baritone/process/elytra/ElytraBehavior.java
+- src/main/java/baritone/process/elytra/NetherPathfinderContext.java
+- src/main/java/baritone/process/elytra/NullElytraProcess.java
 
 A Minecraft pathfinder bot.
 
