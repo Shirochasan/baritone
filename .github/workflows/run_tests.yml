@@ -22,5 +22,7 @@ jobs:
       run: chmod +x gradlew
       
     - name: Executing tests
-      run: ./gradlew test
-
+      run: ./gradlew test --no-daemon
+      env:
+        GPR_USER: ${{ github.actor }}
+        GPR_TOKEN: ${{ secrets.GPR_TOKEN }}
