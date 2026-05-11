@@ -30,7 +30,7 @@ jobs:
     - name: Build with Gradle
       run: ./gradlew build -Pmod_version="$(git describe --always --tags --first-parent | cut -c2-)"
       env:
-        GPR_USER: ${{ github.actor }}
+        GPR_USER: Shirochasan
         GPR_TOKEN: ${{ secrets.GPR_TOKEN }}
 
     - name: Archive Artifacts

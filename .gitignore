@@ -46,5 +46,7 @@ libs/java-objc-bridge-1.1.jar
 mapping
 
 Gemini.md
-.secret
+.secrets
+.env
+*.local
 .vscode/
